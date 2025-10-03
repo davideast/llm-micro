@@ -1,108 +1,180 @@
 import * as readline from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
+import { Message } from './types';
+import { chat, stream, lines, decode, sse, collect, tee, url, env, toSSE, asSSE, withAbort, append } from './lib';
 
-// Transform stream to SSE lines - showcases TextDecoderStream
-async function* toLines(stream: ReadableStream) {
-  const reader = stream.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = '';
-  
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    
-    buffer += value;
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    
-    for (const line of lines) yield line;
+/**
+ * Extracts command from input
+ * Showcases: String methods - startsWith and slice for simple parsing
+ */
+function command(input: string): string | null {
+  if (!input.startsWith('/')) return null;
+  return input.slice(1).toLowerCase();
+}
+
+/**
+ * Executes REPL command
+ * Showcases: Switch statement - clean branching for multiple cases
+ */
+function execute(cmd: string, history: Message[]): { continue: boolean; history?: Message[] } {
+  switch (cmd) {
+    case 'exit':
+    case 'quit':
+      return { continue: false };
+      
+    case 'clear':
+      console.log('History cleared.\n');
+      return { continue: true, history: [] };
+      
+    case 'history':
+      console.log(`History: ${history.length} messages\n`);
+      return { continue: true };
+      
+    case 'help':
+      console.log('Commands:\n  /exit - quit\n  /clear - clear history\n  /history - show count\n');
+      return { continue: true };
+      
+    default:
+      console.log('Unknown command. Type /help for help.\n');
+      return { continue: true };
   }
 }
 
-// Parse SSE data - showcases destructuring
-function parseSSE(line: string) {
-  if (!line.startsWith('data: ')) return;
-  try {
-    const { candidates: [{ content: { parts: [{ text }] } }] } = JSON.parse(line.slice(6));
-    return text;
-  } catch {}
-}
-
-// Stream response chunks - showcases async generators
-async function* streamResponse(url: URL, contents: any[]) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents })
-  });
-  
-  for await (const line of toLines(response.body!)) {
-    const text = parseSSE(line);
-    if (text) yield text;
+/**
+ * Writes stream to stdout
+ * Showcases: For-await-of - seamless async iteration for I/O
+ */
+async function write(source: AsyncIterable<string>): Promise<void> {
+  for await (const chunk of source) {
+    process.stdout.write(chunk);
   }
 }
 
-// Chat with history - showcases closure and Promise resolution
-function chat(url: URL, prompt: string, prevHistory: any[] = []): [Promise<any[]>, AsyncGenerator<string>] {
-  const contents = [...prevHistory, { role: 'user', parts: [{ text: prompt }] }];
-  let response = '';
-  let resolveHistory: (value: any[]) => void = () => {};
+/**
+ * Creates an AbortController with keyboard interrupt
+ * Showcases: Event-driven patterns - stdin as event emitter for Ctrl+C detection
+ */
+function interruptible(): AbortController {
+  const controller = new AbortController();
   
-  const history = new Promise<any[]>(resolve => {
-    resolveHistory = resolve;
-  });
-  
-  const stream = (async function*() {
-    for await (const chunk of streamResponse(url, contents)) {
-      response += chunk;
-      yield chunk;
+  const handler = (chunk: Buffer) => {
+    // Ctrl+C = \x03
+    if (chunk.toString() === '\x03') {
+      controller.abort();
+      stdin.off('data', handler);
     }
-    resolveHistory([...contents, { role: 'model', parts: [{ text: response }] }]);
-  })();
+  };
   
-  return [history, stream];
+  stdin.setRawMode?.(true);
+  stdin.on('data', handler);
+  
+  // Cleanup on abort
+  controller.signal.addEventListener('abort', () => {
+    stdin.off('data', handler);
+    stdin.setRawMode?.(false);
+  });
+  
+  return controller;
 }
 
-// Ultra-minimal elegant REPL
-async function repl(url: URL) {
+/**
+ * Interactive REPL loop
+ * Showcases: Async/await - sequential async code that reads like sync
+ */
+async function repl(url: URL): Promise<void> {
   const rl = readline.createInterface({ input: stdin, output: stdout });
-  let history: any[] = [];
+  let history: Message[] = [];
   
-  for (;;) {
-    const prompt = await rl.question('> ');
-    if (!prompt) break;
-    
-    const [nextHistory, stream] = chat(url, prompt, history);
-    
-    for await (const chunk of stream) {
-      process.stdout.write(chunk);
+  console.log('Chat started. Type /help for commands, /exit to quit.\n');
+  console.log('Press Ctrl+C during generation to cancel.\n');
+  
+  try {
+    while (true) {
+      const input = await rl.question('> ');
+      
+      const cmd = command(input);
+      if (cmd) {
+        const result = execute(cmd, history);
+        if (!result.continue) break;
+        if (result.history) history = result.history;
+        continue;
+      }
+      
+      if (!input.trim()) continue;
+      
+      const controller = interruptible();
+      
+      try {
+        const [next, output] = chat(url, input, history, controller.signal);
+        await write(output);
+        process.stdout.write('\n\n');
+        history = await next;
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.error('\n\nGeneration cancelled.\n');
+        } else {
+          console.error(`\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n`);
+        }
+      } finally {
+        controller.abort(); // Cleanup
+      }
     }
-    
-    process.stdout.write('\n');
-    history = await nextHistory;
+  } finally {
+    rl.close();
   }
-  
-  rl.close();
 }
 
-function namespace(prefix = 'LLMI_', obj = process.env) {
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (key.startsWith(prefix)) {
-      const subKey = key.slice(prefix.length);
-      result[subKey] = value;
-    }
-  }
-  return result;
+/**
+ * Sets up signal handler
+ * Showcases: Arrow functions - concise event handler syntax
+ */
+function signals(): void {
+  process.on('SIGINT', () => {
+    console.log('\nGoodbye!');
+    process.exit(0);
+  });
 }
 
-const env = Object.freeze({
-  key: process.env.GEMINI_API_KEY ?? (() => { throw new Error('GEMINI_API_KEY required') })(),
-  alt: process.env.GEMINI_ALT ?? 'sse'
-});
+/**
+ * Main entry point
+ * Showcases: Top-level await - clean async initialization
+ */
+async function main(): Promise<void> {
+  signals();
+  
+  try {
+    await repl(url());
+  } catch (error) {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  }
+}
 
-const model = (name: 'gemini-2.5-flash' | 'gemini-2.5-pro', method = 'streamGenerateContent', params = env) => 
-  new URL(`?${new URLSearchParams(params)}`, 
-    `https://generativelanguage.googleapis.com/v1beta/models/${name}:${method}`);
+// Run if main module
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
 
-const url = model('gemini-2.5-flash');
-await repl(url);
+// Export for library use
+export {
+  chat,
+  stream,
+  lines,
+  decode,
+  sse,
+  collect,
+  tee,
+  url,
+  env,
+  toSSE,
+  asSSE,
+  withAbort,
+  append,
+  signals,
+  repl,
+  execute,
+  command,
+  write,
+  interruptible,
+  type Message
+};

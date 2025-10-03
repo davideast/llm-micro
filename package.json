@@ -1,17 +1,29 @@
 {
-  "name": "llmicro",
-  "version": "1.0.0",
+  "name": "llm-micro",
+  "version": "0.0.1",
   "description": "",
-  "main": "index.js",
+  "main": "./dist/index.js",
   "type": "module",
+  "exports": {
+    ".": {
+      "browser": "./dist/browser.js",
+      "node": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "test": "vitest"
   },
   "keywords": [],
-  "author": "",
+  "author": "David East",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^24.3.1",
+    "vite": "^7.1.7",
     "vitest": "^1.6.0"
+  },
+  "dependencies": {
+    "glob": "^11.0.3",
+    "open-props": "^1.7.16"
   }
 }
