@@ -118,7 +118,9 @@ export async function* sse(source: AsyncIterable<string>): AsyncGenerator<string
   for await (const line of source) {
     const json = data(line);
     if (json) {
+      console.log('SSE JSON:', json);
       const text = parse(json);
+      console.log('Parsed text:', JSON.stringify(text));
       if (text) yield text;
     }
   }
@@ -169,39 +171,54 @@ export async function collect<T>(source: AsyncIterable<T>): Promise<T[]> {
   return items;
 }
 
-async function* branch<T>(options: { source: AsyncIterable<T>, q: T[], other: T[], iterator?: AsyncIterator<T>, done: { value: boolean } }): AsyncGenerator<T> {
-  let { q, other, iterator, done, source } = options;
-  if (!iterator) {
-    iterator = source[Symbol.asyncIterator]();
-  }
-  
-  while (true) {
-    if (q.length > 0) {
-      yield q.shift()!;
-    } else if (done.value) {
-      break;
-    } else {
-      const result = await iterator.next();
-      if (result.done) {
-        done.value = true;
-        break;
-      }
-      yield result.value;
-      other.push(result.value);
-    }
-  }
-}
-
 /**
  * Splits async iterator into two
  * Showcases: Async generator protocol - manual iteration control with queues
  */
 export function tee<T>(source: AsyncIterable<T>): [AsyncIterable<T>, AsyncIterable<T>] {
-  const queues: T[][] = [[], []];
-  const done = { value: false };
-  const left = branch({ source, q: queues[0], other: queues[1], done });
-  const right = branch({ source, q: queues[1], other: queues[0], done });
-  return [left, right];
+  const iterator = source[Symbol.asyncIterator]();
+  const buffer: T[] = [];
+  let done = false;
+  let pending: Promise<void> | null = null;
+
+  async function pullNext(): Promise<void> {
+    if (done) return;
+
+    const result = await iterator.next();
+    if (result.done) {
+      done = true;
+    } else {
+      buffer.push(result.value);
+    }
+  }
+
+  async function* branch(): AsyncGenerator<T> {
+    let index = 0;
+
+    while (true) {
+      // If we have buffered values, yield them
+      if (index < buffer.length) {
+        yield buffer[index++];
+      } else if (done) {
+        break;
+      } else {
+        // Ensure only one pull happens at a time
+        if (!pending) {
+          pending = pullNext();
+        }
+
+        await pending;
+        pending = null;
+
+        // After pulling, check if we got a value
+        if (index < buffer.length) {
+          yield buffer[index++];
+        }
+      }
+    }
+  }
+
+  return [branch(), branch()];
 }
 
 /**

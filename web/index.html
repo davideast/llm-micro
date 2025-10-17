@@ -320,6 +320,7 @@
         let fullText = '';
         for await (const data of parseSSE(response)) {
           if (data.chunk) {
+            console.log('Received chunk:', JSON.stringify(data.chunk));
             fullText += data.chunk;
             messageContentEl.textContent = fullText;
             messagesEl.scrollTop = messagesEl.scrollHeight;

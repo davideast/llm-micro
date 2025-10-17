@@ -9,11 +9,13 @@ async function* streamSSE(
 ): AsyncGenerator<string> {
   try {
     for await (const chunk of withAbort(source, signal)) {
+      console.log('Server streaming chunk:', JSON.stringify(chunk));
       yield toSSE({ chunk });
     }
-    
+
     // Send updated history when done
     const updatedHistory = await nextHistory;
+    console.log('Server final history:', JSON.stringify(updatedHistory));
     yield toSSE({ done: true, history: updatedHistory });
   } catch (error) {
     yield toSSE({ error: error instanceof Error ? error.message : 'Unknown error' });
