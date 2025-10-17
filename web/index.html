@@ -285,19 +285,30 @@
     buttonEl.addEventListener('click', async () => {
       const input = inputEl.value.trim();
       if (!input || isProcessing) return; // Check lock
-      
+
       // Acquire lock
       isProcessing = true;
       buttonEl.disabled = true;
       inputEl.disabled = true;
-      
+
+      // Display user's message first
+      const userMessage = document.createElement('div');
+      userMessage.classList.add('chat-bubble');
+      const userContentEl = document.createElement('div');
+      userContentEl.classList.add('chat-message__content');
+      userContentEl.textContent = input;
+      userMessage.appendChild(userContentEl);
+      messagesEl.appendChild(userMessage);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
       try {
         const response = await fetch('/api/hello', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ input, history })
         });
-        
+
+        // Display assistant's message
         const message = document.createElement('div');
         message.classList.add('chat-message');
         const messageContentEl = document.createElement('div');
@@ -306,16 +317,18 @@
         messagesEl.appendChild(message);
         messagesEl.scrollTop = messagesEl.scrollHeight;
         
+        let fullText = '';
         for await (const data of parseSSE(response)) {
           if (data.chunk) {
-            messageContentEl.textContent += data.chunk;
+            fullText += data.chunk;
+            messageContentEl.textContent = fullText;
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }
-          
+
           if (data.done && data.history) {
             // Update local history AFTER stream completes
             history = data.history;
-            console.log('History updated:', history);
+            console.log('History updated:', JSON.stringify(history, null, 2));
           }
         }
       } catch (error) {
