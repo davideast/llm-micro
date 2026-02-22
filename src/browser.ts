@@ -1,5 +1,8 @@
 export type { Message } from './types';
-export { chat, stream, lines, decode, sse, collect, tee, url } from './lib';
+export { chat, stream } from './chat';
+export { lines, decode, collect, tee } from './stream';
+export { sse } from './sse';
+export { url } from './gemini';
 
 /**
  * Creates an AbortController with DOM event trigger (browser version)

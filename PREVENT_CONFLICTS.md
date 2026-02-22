@@ -23,7 +23,7 @@ Files mix different concerns (e.g., Browser-specific code in `src/browser.ts` im
 
 ## Action Items
 
-### 1. Decompose `src/lib.ts`
+### 1. Decompose `src/lib.ts` (Completed: 2026-02-22)
 Split `src/lib.ts` into focused, single-responsibility modules. Suggested breakdown:
 - **`src/sse.ts`**: functions `toSSE`, `asSSE`, `data` (parsing SSE lines), `sse` (generator).
 - **`src/net.ts`**: `post` function and other HTTP helpers.
@@ -47,6 +47,6 @@ Separate the CLI application from the library entry point:
 - Create separate test files for each new module (e.g., `tests/sse.test.ts`, `tests/chat.test.ts`).
 - This allows agents to write and run tests for specific features without modifying a shared test file, reducing conflicts.
 
-### 5. No Barrel Files for Internal Imports
+### 5. No Barrel Files for Internal Imports (Completed: 2026-02-22)
 - Agents and internal modules should import directly from the source file (e.g., `import { toSSE } from './sse'`) rather than from a barrel file.
 - This prevents "import loops" and reduces the need to constantly update a central export file when adding new features.
