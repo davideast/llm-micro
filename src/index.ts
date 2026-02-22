@@ -1,7 +1,11 @@
 import * as readline from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { Message } from './types';
-import { chat, stream, lines, decode, sse, collect, tee, url, env, toSSE, asSSE, withAbort, append } from './lib';
+import { chat, stream } from './chat';
+import { lines, decode, collect, tee, withAbort, append } from './stream';
+import { sse, toSSE, asSSE } from './sse';
+import { url } from './gemini';
+import { env } from './utils';
 
 /**
  * Extracts command from input
