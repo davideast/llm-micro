@@ -23,7 +23,7 @@ Files mix different concerns (e.g., Browser-specific code in `src/browser.ts` im
 
 ## Action Items
 
-### 1. Decompose `src/lib.ts`
+### 1. Decompose `src/lib.ts` (Completed: 2025-02-17)
 Split `src/lib.ts` into focused, single-responsibility modules. Suggested breakdown:
 - **`src/sse.ts`**: functions `toSSE`, `asSSE`, `data` (parsing SSE lines), `sse` (generator).
 - **`src/net.ts`**: `post` function and other HTTP helpers.
@@ -32,7 +32,7 @@ Split `src/lib.ts` into focused, single-responsibility modules. Suggested breakd
 - **`src/utils.ts`**: `env`, generic utilities.
 - **`src/gemini.ts`**: `url` (API URL construction specific to Gemini).
 
-### 2. Refactor `src/index.ts`
+### 2. Refactor `src/index.ts` (Completed: 2025-02-17)
 Separate the CLI application from the library entry point:
 - Move REPL logic to **`src/cli/repl.ts`**.
 - Move command parsing to **`src/cli/commands.ts`**.
